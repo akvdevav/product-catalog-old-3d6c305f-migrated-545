@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Product Catalog · Migration Demo</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: system-ui, sans-serif;
+      font-size: 14px;
+      background: #0f1117;
+      color: #e2e8f0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    header {
+      padding: 18px 24px;
+      background: #1a1d27;
+      border-bottom: 1px solid #2d3148;
+      display: flex;
+      align-items: baseline;
+      gap: 16px;
+    }
+    header h1 { font-size: 16px; font-weight: 600; color: #f1f5f9; }
+    header p  { font-size: 12px; color: #64748b; }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0;
+      flex: 1;
+    }
+
+    .panel {
+      padding: 20px;
+      border-right: 1px solid #2d3148;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .panel:last-child { border-right: none; }
+
+    .panel-header {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid #2d3148;
+    }
+    .panel-header h2 { font-size: 13px; font-weight: 600; }
+    .panel-header span { font-size: 11px; color: #64748b; }
+
+    .panel-db   .panel-header h2 { color: #60a5fa; }
+    .panel-cache .panel-header h2 { color: #34d399; }
+    .panel-msg  .panel-header h2 { color: #fbbf24; }
+
+    label { display: block; font-size: 11px; color: #94a3b8; margin-bottom: 4px; }
+
+    input[type="text"], input[type="number"] {
+      width: 100%;
+      padding: 6px 10px;
+      background: #1a1d27;
+      border: 1px solid #2d3148;
+      border-radius: 6px;
+      color: #e2e8f0;
+      font-size: 13px;
+      outline: none;
+    }
+    input:focus { border-color: #3b82f6; }
+
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+
+    button {
+      padding: 7px 14px;
+      border: none;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: opacity .15s;
+    }
+    button:hover { opacity: .85; }
+    .btn-blue   { background: #3b82f6; color: #fff; }
+    .btn-green  { background: #10b981; color: #fff; }
+    .btn-red    { background: #ef4444; color: #fff; font-size: 11px; padding: 3px 8px; }
+    .btn-amber  { background: #f59e0b; color: #1a1d27; }
+
+    .product-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .product-table th {
+      text-align: left;
+      padding: 5px 8px;
+      color: #64748b;
+      font-weight: 500;
+      border-bottom: 1px solid #2d3148;
+    }
+    .product-table td { padding: 6px 8px; border-bottom: 1px solid #1e2235; vertical-align: middle; }
+    .product-table tr:last-child td { border-bottom: none; }
+    .empty { font-size: 12px; color: #475569; text-align: center; padding: 20px; }
+
+    .stats-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+    .stat-box {
+      background: #1a1d27;
+      border: 1px solid #2d3148;
+      border-radius: 8px;
+      padding: 10px 12px;
+    }
+    .stat-label { font-size: 10px; color: #64748b; margin-bottom: 2px; }
+    .stat-value { font-size: 20px; font-weight: 600; color: #34d399; }
+    .stat-value.miss { color: #f87171; }
+    .stat-value.rate { color: #a78bfa; font-size: 18px; }
+
+    .fetch-result {
+      background: #1a1d27;
+      border: 1px solid #2d3148;
+      border-radius: 6px;
+      padding: 10px 12px;
+      font-size: 12px;
+      min-height: 48px;
+      color: #94a3b8;
+    }
+    .fetch-result.hit  { border-color: #34d399; color: #34d399; }
+    .fetch-result.miss { border-color: #f87171; color: #f87171; }
+
+    .event-log {
+      flex: 1;
+      background: #1a1d27;
+      border: 1px solid #2d3148;
+      border-radius: 8px;
+      padding: 10px;
+      overflow-y: auto;
+      max-height: calc(100vh - 240px);
+      min-height: 200px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .event-entry {
+      font-family: monospace;
+      font-size: 11px;
+      padding: 4px 6px;
+      border-radius: 4px;
+      animation: fadein .3s ease;
+    }
+    @keyframes fadein { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; } }
+    .event-created { background: #1c2e1e; color: #4ade80; }
+    .event-deleted { background: #2e1c1c; color: #f87171; }
+    .event-system  { color: #475569; font-style: italic; }
+
+    .conn-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 11px;
+      color: #64748b;
+    }
+    .conn-dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: #475569;
+    }
+    .conn-dot.connected { background: #34d399; }
+
+    .field-group { display: flex; flex-direction: column; gap: 6px; }
+    .input-row { display: flex; gap: 8px; }
+    .input-row input { flex: 1; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Product Catalog · Migration Demo</h1>
+  <p>Spring Boot 3 · H2 · ActiveMQ Artemis · Caffeine</p>
+</header>
+
+<div class="grid">
+
+  <!-- DATABASE PANEL -->
+  <div class="panel panel-db">
+    <div class="panel-header">
+      <h2>Database · H2</h2>
+      <span>Products are persisted via JPA and stored in-memory</span>
+    </div>
+
+    <div class="field-group">
+      <label>Create a product</label>
+      <input type="text"   id="p-name"  placeholder="Name" />
+      <input type="text"   id="p-desc"  placeholder="Description" />
+      <div class="form-row">
+        <input type="number" id="p-price" placeholder="Price (e.g. 9.99)" step="0.01" min="0" />
+        <input type="number" id="p-stock" placeholder="Stock" min="0" />
+      </div>
+      <button class="btn-blue" onclick="createProduct()">Create product</button>
+    </div>
+
+    <div>
+      <label>Current products</label>
+      <table class="product-table">
+        <thead>
+          <tr>
+            <th>ID</th><th>Name</th><th>Price</th><th>Stock</th><th></th>
+          </tr>
+        </thead>
+        <tbody id="product-list">
+          <tr><td colspan="5" class="empty">No products yet</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- CACHE PANEL -->
+  <div class="panel panel-cache">
+    <div class="panel-header">
+      <h2>Cache · Caffeine</h2>
+      <span>Fetch a product twice — the second call skips the database</span>
+    </div>
+
+    <div>
+      <label>Live cache stats</label>
+      <div class="stats-grid">
+        <div class="stat-box">
+          <div class="stat-label">Hits</div>
+          <div class="stat-value" id="stat-hits">0</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-label">Misses</div>
+          <div class="stat-value miss" id="stat-misses">0</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-label">Hit rate</div>
+          <div class="stat-value rate" id="stat-rate">—</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-label">Cached entries</div>
+          <div class="stat-value rate" id="stat-size">0</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="field-group">
+      <label>Fetch product by ID</label>
+      <div class="input-row">
+        <input type="number" id="fetch-id" placeholder="Product ID" min="1" />
+        <button class="btn-green" onclick="fetchProduct()">Fetch</button>
+      </div>
+      <div class="fetch-result" id="fetch-result">
+        Result will appear here. Fetch the same ID twice to see a cache hit.
+      </div>
+    </div>
+
+    <div style="font-size:11px;color:#475569;line-height:1.6;">
+      Hits and misses are tracked by Caffeine's built-in stats recorder.
+      Cache entries expire after 60 seconds or when the product is deleted.
+    </div>
+  </div>
+
+  <!-- MESSAGING PANEL -->
+  <div class="panel panel-msg">
+    <div class="panel-header">
+      <h2>Messaging · Artemis</h2>
+      <span>JMS events from the product-events queue, streamed via SSE</span>
+    </div>
+
+    <div style="display:flex; align-items:center; justify-content:space-between;">
+      <label style="margin:0">Live event log</label>
+      <span class="conn-badge">
+        <span class="conn-dot" id="conn-dot"></span>
+        <span id="conn-label">Connecting…</span>
+      </span>
+    </div>
+
+    <div class="event-log" id="event-log">
+      <div class="event-entry event-system">Waiting for events…</div>
+    </div>
+
+    <div style="font-size:11px;color:#475569;line-height:1.6;">
+      Every create and delete publishes a message to the <code>product-events</code> JMS queue.
+      The listener receives it and forwards it here over Server-Sent Events.
+    </div>
+  </div>
+
+</div>
+
+<script>
+  const API = '';
+
+  async function loadProducts() {
+    const res = await fetch(`${API}/products`);
+    const products = await res.json();
+    const tbody = document.getElementById('product-list');
+    if (products.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="5" class="empty">No products yet</td></tr>';
+      return;
+    }
+    tbody.innerHTML = products.map(p => `
+      <tr>
+        <td>${p.id}</td>
+        <td>${p.name}</td>
+        <td>$${Number(p.price).toFixed(2)}</td>
+        <td>${p.stock}</td>
+        <td><button class="btn-red" onclick="deleteProduct(${p.id})">Delete</button></td>
+      </tr>
+    `).join('');
+  }
+
+  async function createProduct() {
+    const name  = document.getElementById('p-name').value.trim();
+    const desc  = document.getElementById('p-desc').value.trim();
+    const price = document.getElementById('p-price').value;
+    const stock = document.getElementById('p-stock').value;
+    if (!name || !price || !stock) return;
+
+    await fetch(`${API}/products`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, description: desc, price: parseFloat(price), stock: parseInt(stock) })
+    });
+
+    ['p-name','p-desc','p-price','p-stock'].forEach(id => document.getElementById(id).value = '');
+    loadProducts();
+    loadStats();
+  }
+
+  async function deleteProduct(id) {
+    await fetch(`${API}/products/${id}`, { method: 'DELETE' });
+    loadProducts();
+    loadStats();
+  }
+
+  async function loadStats() {
+    const res  = await fetch(`${API}/cache/stats`);
+    const data = await res.json();
+    document.getElementById('stat-hits').textContent   = data.hits;
+    document.getElementById('stat-misses').textContent = data.misses;
+    document.getElementById('stat-rate').textContent   = (data.hits + data.misses) === 0 ? '—' : data.hitRate;
+    document.getElementById('stat-size').textContent   = data.size;
+  }
+
+  async function fetchProduct() {
+    const id = document.getElementById('fetch-id').value;
+    if (!id) return;
+
+    const before = await (await fetch(`${API}/cache/stats`)).json();
+    const hitsBefore = before.hits;
+
+    const res = await fetch(`${API}/products/${id}`);
+    if (!res.ok) {
+      const el = document.getElementById('fetch-result');
+      el.className = 'fetch-result miss';
+      el.textContent = `Product ${id} not found.`;
+      return;
+    }
+    const product = await res.json();
+
+    const after = await (await fetch(`${API}/cache/stats`)).json();
+    const hitsAfter = after.hits;
+    const isHit = hitsAfter > hitsBefore;
+
+    const el = document.getElementById('fetch-result');
+    el.className = `fetch-result ${isHit ? 'hit' : 'miss'}`;
+    el.textContent = `${isHit ? '✓ Cache HIT' : '✗ Cache MISS (fetched from DB)'} — ${product.name} · $${Number(product.price).toFixed(2)} · stock: ${product.stock}`;
+
+    document.getElementById('stat-hits').textContent   = after.hits;
+    document.getElementById('stat-misses').textContent = after.misses;
+    document.getElementById('stat-rate').textContent   = after.hitRate;
+    document.getElementById('stat-size').textContent   = after.size;
+  }
+
+  function connectSse() {
+    const dot   = document.getElementById('conn-dot');
+    const label = document.getElementById('conn-label');
+    const log   = document.getElementById('event-log');
+    const sse   = new EventSource(`${API}/events`);
+
+    sse.onopen = () => {
+      dot.classList.add('connected');
+      label.textContent = 'Connected';
+    };
+
+    sse.onmessage = (e) => {
+      const msg  = e.data;
+      const div  = document.createElement('div');
+      const time = new Date().toLocaleTimeString();
+
+      if (msg.startsWith('CREATED')) {
+        div.className = 'event-entry event-created';
+        const [, id, name] = msg.split(':');
+        div.textContent = `[${time}] ✚ CREATED  id=${id}  name=${name}`;
+      } else if (msg.startsWith('DELETED')) {
+        div.className = 'event-entry event-deleted';
+        const [, id] = msg.split(':');
+        div.textContent = `[${time}] ✖ DELETED  id=${id}`;
+      } else {
+        div.className = 'event-entry event-system';
+        div.textContent = `[${time}] ${msg}`;
+      }
+
+      if (log.querySelector('.event-system')?.textContent.startsWith('Waiting')) {
+        log.innerHTML = '';
+      }
+      log.appendChild(div);
+      log.scrollTop = log.scrollHeight;
+    };
+
+    sse.onerror = () => {
+      dot.classList.remove('connected');
+      label.textContent = 'Reconnecting…';
+    };
+  }
+
+  loadProducts();
+  loadStats();
+  connectSse();
+  setInterval(loadStats, 5000);
+</script>
+</body>
+</html>
