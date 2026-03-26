@@ -3,7 +3,7 @@ package com.example.productcatalog.messaging;
 import com.example.productcatalog.controller.ProductEventSseController;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.jms.annotation.JmsListener;
+import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -17,7 +17,7 @@ public class ProductEventListener {
         this.sseController = sseController;
     }
 
-    @JmsListener(destination = "product-events")
+    @RabbitListener(queuesToDeclare = @org.springframework.amqp.rabbit.annotation.Queue(name = "product-events"))
     public void onProductEvent(String message) {
         log.info("Received product event: {}", message);
         sseController.broadcast(message);

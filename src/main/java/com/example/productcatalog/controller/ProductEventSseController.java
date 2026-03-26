@@ -1,5 +1,7 @@
 package com.example.productcatalog.controller;
 
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -14,6 +16,9 @@ import java.util.concurrent.CopyOnWriteArrayList;
 public class ProductEventSseController {
 
     private final List<SseEmitter> emitters = new CopyOnWriteArrayList<>();
+
+    @Autowired
+    private RabbitTemplate rabbitTemplate;
 
     @GetMapping(produces = "text/event-stream")
     public SseEmitter subscribe() {
@@ -34,5 +39,7 @@ public class ProductEventSseController {
             }
         }
         emitters.removeAll(dead);
+        // Send to RabbitMQ for distributed event broadcasting
+        rabbitTemplate.convertAndSend("product.events", message);
     }
 }
