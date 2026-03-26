@@ -1,88 +1,368 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0"
-         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
-    <modelVersion>4.0.0</modelVersion>
+package com.example.productcatalog;
 
-    <parent>
-        <groupId>org.springframework.boot</groupId>
-        <artifactId>spring-boot-starter-parent</artifactId>
-        <version>3.4.4</version>
-        <relativePath/>
-    </parent>
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.cache.annotation.EnableCaching;
+import org.springframework.amqp.rabbit.annotation.EnableRabbit;
 
-    <groupId>com.example</groupId>
-    <artifactId>product-catalog-source</artifactId>
-    <version>0.0.1-SNAPSHOT</version>
-    <packaging>jar</packaging>
+@SpringBootApplication
+@EnableCaching
+@EnableRabbit
+public class ProductCatalogApplication {
 
-    <name>product-catalog-source</name>
-    <description>Product Catalog Source — Spring Boot 3 with H2, ActiveMQ Artemis, and Caffeine</description>
+    public static void main(String[] args) {
+        SpringApplication.run(ProductCatalogApplication.class, args);
+    }
+}
 
-    <properties>
-        <java.version>21</java.version>
-    </properties>
 
-    <dependencies>
+package com.example.productcatalog.config;
 
-        <!-- Web -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-web</artifactId>
-        </dependency>
+import org.springframework.cache.CacheManager;
+import org.springframework.cache.annotation.EnableCaching;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.data.redis.cache.RedisCacheConfiguration;
+import org.springframework.data.redis.cache.RedisCacheManager;
+import org.springframework.data.redis.connection.RedisConnectionFactory;
+import org.springframework.data.redis.serializer.GenericJackson2JsonRedisSerializer;
+import org.springframework.data.redis.serializer.RedisSerializationContext;
+import org.springframework.data.redis.serializer.StringRedisSerializer;
 
-        <!-- JPA + H2 -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-data-jpa</artifactId>
-        </dependency>
-        
+import java.time.Duration;
 
-        <!-- Messaging — Artemis embedded -->
-        
-        
+@Configuration
+@EnableCaching
+public class RedisConfig {
 
-        <!-- Cache + Caffeine -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-cache</artifactId>
-        </dependency>
-        
+    @Bean
+    public CacheManager cacheManager(RedisConnectionFactory connectionFactory) {
+        RedisCacheConfiguration config = RedisCacheConfiguration.defaultCacheConfig()
+                .entryTtl(Duration.ofMinutes(10))
+                .serializeKeysWith(RedisSerializationContext.SerializationPair.fromSerializer(new StringRedisSerializer()))
+                .serializeValuesWith(RedisSerializationContext.SerializationPair.fromSerializer(new GenericJackson2JsonRedisSerializer()))
+                .disableCachingNullValues();
 
-        <!-- Test -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-test</artifactId>
-            <scope>test</scope>
-        </dependency>
+        return RedisCacheManager.builder(connectionFactory)
+                .withCacheConfiguration("products", config)
+                .build();
+    }
+}
 
-    
-        <dependency>
-            <groupId>org.postgresql</groupId>
-            <artifactId>postgresql</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-data-redis</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-amqp</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework.amqp</groupId>
-            <artifactId>spring-rabbit-stream</artifactId>
-            <version>3.2.9</version>
-        </dependency>
-    </dependencies>
 
-    <build>
-        <plugins>
-            <plugin>
-                <groupId>org.springframework.boot</groupId>
-                <artifactId>spring-boot-maven-plugin</artifactId>
-            </plugin>
-        </plugins>
-    </build>
+package com.example.productcatalog.controller;
 
-</project>
+import com.example.productcatalog.model.Product;
+import com.example.productcatalog.service.ProductService;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+
+@RestController
+@RequestMapping("/products")
+public class ProductController {
+
+    private final ProductService service;
+
+    public ProductController(ProductService service) {
+        this.service = service;
+    }
+
+    @GetMapping
+    public List<Product> list() {
+        return service.getAllProducts();
+    }
+
+    @GetMapping("/{id}")
+    public Product get(@PathVariable Long id) {
+        return service.getProduct(id);
+    }
+
+    @PostMapping
+    @ResponseStatus(HttpStatus.CREATED)
+    public Product create(@RequestBody Product product) {
+        return service.createProduct(product);
+    }
+
+    @DeleteMapping("/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void delete(@PathVariable Long id) {
+        service.deleteProduct(id);
+    }
+}
+
+
+package com.example.productcatalog.controller;
+
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.util.Map;
+
+@RestController
+@RequestMapping("/cache/stats")
+public class CacheStatsController {
+
+    @GetMapping
+    public Map<String, Object> stats() {
+        // Note: Redis cache statistics are not directly available via RedisCacheManager
+        // This is a placeholder implementation; actual Redis metrics would require
+        // custom monitoring or integration with Redis INFO commands.
+        return Map.of(
+            "message", "Redis cache statistics not directly available via RedisCacheManager"
+        );
+    }
+}
+
+
+package com.example.productcatalog.controller;
+
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+
+import java.io.IOException;
+import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
+
+@RestController
+@RequestMapping("/events")
+public class ProductEventSseController {
+
+    private final List<SseEmitter> emitters = new CopyOnWriteArrayList<>();
+
+    @Autowired
+    private RabbitTemplate rabbitTemplate;
+
+    @GetMapping(produces = "text/event-stream")
+    public SseEmitter subscribe() {
+        SseEmitter emitter = new SseEmitter(Long.MAX_VALUE);
+        emitters.add(emitter);
+        emitter.onCompletion(() -> emitters.remove(emitter));
+        emitter.onTimeout(() -> emitters.remove(emitter));
+        return emitter;
+    }
+
+    public void broadcast(String message) {
+        List<SseEmitter> dead = new CopyOnWriteArrayList<>();
+        for (SseEmitter emitter : emitters) {
+            try {
+                emitter.send(SseEmitter.event().data(message));
+            } catch (IOException e) {
+                dead.add(emitter);
+            }
+        }
+        emitters.removeAll(dead);
+        // Send to RabbitMQ for distributed event broadcasting
+        rabbitTemplate.convertAndSend("product.events", message);
+    }
+}
+
+
+package com.example.productcatalog.messaging;
+
+import com.example.productcatalog.controller.ProductEventSseController;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.amqp.rabbit.annotation.RabbitListener;
+import org.springframework.stereotype.Component;
+
+@Component
+public class ProductEventListener {
+
+    private static final Logger log = LoggerFactory.getLogger(ProductEventListener.class);
+
+    private final ProductEventSseController sseController;
+
+    public ProductEventListener(ProductEventSseController sseController) {
+        this.sseController = sseController;
+    }
+
+    @RabbitListener(queuesToDeclare = @org.springframework.amqp.rabbit.annotation.Queue(name = "product-events"))
+    public void onProductEvent(String message) {
+        log.info("Received product event: {}", message);
+        sseController.broadcast(message);
+    }
+}
+
+
+package com.example.productcatalog.messaging;
+
+import com.example.productcatalog.model.Product;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import org.springframework.stereotype.Component;
+
+@Component
+public class ProductEventPublisher {
+
+    private static final String QUEUE = "product-events";
+    private final RabbitTemplate rabbitTemplate;
+
+    public ProductEventPublisher(RabbitTemplate rabbitTemplate) {
+        this.rabbitTemplate = rabbitTemplate;
+    }
+
+    public void publishCreated(Product product) {
+        rabbitTemplate.convertAndSend(QUEUE, "CREATED:" + product.getId() + ":" + product.getName());
+    }
+
+    public void publishDeleted(Long id) {
+        rabbitTemplate.convertAndSend(QUEUE, "DELETED:" + id);
+    }
+}
+
+
+package com.example.productcatalog.model;
+
+import jakarta.persistence.*;
+import java.math.BigDecimal;
+
+@Entity
+@Table(name = "products")
+public class Product {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(nullable = false)
+    private String name;
+
+    private String description;
+
+    @Column(nullable = false)
+    private BigDecimal price;
+
+    @Column(nullable = false)
+    private Integer stock;
+
+    public Product() {}
+
+    public Product(String name, String description, BigDecimal price, Integer stock) {
+        this.name = name;
+        this.description = description;
+        this.price = price;
+        this.stock = stock;
+    }
+
+    public Long getId() { return id; }
+    public void setId(Long id) { this.id = id; }
+
+    public String getName() { return name; }
+    public void setName(String name) { this.name = name; }
+
+    public String getDescription() { return description; }
+    public void setDescription(String description) { this.description = description; }
+
+    public BigDecimal getPrice() { return price; }
+    public void setPrice(BigDecimal price) { this.price = price; }
+
+    public Integer getStock() { return stock; }
+    public void setStock(Integer stock) { this.stock = stock; }
+}
+
+
+package com.example.productcatalog.model;
+
+import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.ResponseStatus;
+
+@ResponseStatus(HttpStatus.NOT_FOUND)
+public class ProductNotFoundException extends RuntimeException {
+
+    public ProductNotFoundException(Long id) {
+        super("Product not found: " + id);
+    }
+}
+
+
+package com.example.productcatalog.repository;
+
+import com.example.productcatalog.model.Product;
+import org.springframework.data.jpa.repository.JpaRepository;
+
+public interface ProductRepository extends JpaRepository<Product, Long> {}
+
+
+package com.example.productcatalog.service;
+
+import com.example.productcatalog.messaging.ProductEventPublisher;
+import com.example.productcatalog.model.Product;
+import com.example.productcatalog.model.ProductNotFoundException;
+import com.example.productcatalog.repository.ProductRepository;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.stereotype.Service;
+
+import java.util.List;
+
+@Service
+public class ProductService {
+
+    private final ProductRepository repository;
+    private final ProductEventPublisher eventPublisher;
+
+    public ProductService(ProductRepository repository, ProductEventPublisher eventPublisher) {
+        this.repository = repository;
+        this.eventPublisher = eventPublisher;
+    }
+
+    public List<Product> getAllProducts() {
+        return repository.findAll();
+    }
+
+    @Cacheable(value = "products", key = "#id")
+    public Product getProduct(Long id) {
+        return repository.findById(id)
+                .orElseThrow(() -> new ProductNotFoundException(id));
+    }
+
+    public Product createProduct(Product product) {
+        Product saved = repository.save(product);
+        eventPublisher.publishCreated(saved);
+        return saved;
+    }
+
+    @CacheEvict(value = "products", key = "#id")
+    public void deleteProduct(Long id) {
+        repository.deleteById(id);
+        eventPublisher.publishDeleted(id);
+    }
+}
+
+
+spring.application.name=product-catalog-source
+
+# PostgreSQL
+spring.datasource.url=${DATABASE_URL:jdbc:postgresql://localhost:5432/productdb}
+spring.datasource.driver-class-name=org.postgresql.Driver
+spring.datasource.username=${DATABASE_USERNAME:postgres}
+spring.datasource.password=${DATABASE_PASSWORD:password}
+spring.jpa.database-platform=org.hibernate.dialect.PostgreSQLDialect
+spring.jpa.hibernate.ddl-auto=update
+spring.jpa.show-sql=false
+
+# RabbitMQ
+spring.rabbitmq.host=${RABBITMQ_HOST:localhost}
+spring.rabbitmq.port=${RABBITMQ_PORT:5672}
+spring.rabbitmq.username=${RABBITMQ_USERNAME:guest}
+spring.rabbitmq.password=${RABBITMQ_PASSWORD:guest}
+
+# Valkey
+spring.data.redis.host=${REDIS_HOST:localhost}
+spring.data.redis.port=${REDIS_PORT:6379}
+spring.data.redis.password=${REDIS_PASSWORD:}
+spring.data.redis.timeout=2000ms
+
+# Cache
+spring.cache.type=redis
+spring.cache.redis.time-to-live=600000
+spring.cache.redis.cache-null-values=false
+
+# Shutdown
+server.shutdown=immediate
